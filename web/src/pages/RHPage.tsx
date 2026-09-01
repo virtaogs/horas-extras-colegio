@@ -580,6 +580,102 @@ function AbaColaboradores() {
         Authentication → Users no painel do Supabase e depois vincule o UUID gerado na coluna
         <code> user_id</code> desta tabela.
       </p>
+
+      <ExpurgoAnonimizacao />
+    </div>
+  )
+}
+
+function ExpurgoAnonimizacao() {
+  const [anos, setAnos] = useState(5)
+  const [candidatos, setCandidatos] = useState<
+    { colaborador_id: string; nome_anterior: string; matricula_anterior: string; ultima_atividade: string }[]
+  >(null as any)
+  const [carregando, setCarregando] = useState(false)
+  const [erro, setErro] = useState<string | null>(null)
+  const [mensagem, setMensagem] = useState<string | null>(null)
+
+  async function simular() {
+    setCarregando(true)
+    setErro(null)
+    setMensagem(null)
+    const { data, error } = await supabase.rpc('anonimizar_colaboradores_antigos', {
+      p_anos_retencao: anos,
+      p_somente_simular: true,
+    })
+    setCarregando(false)
+    if (error) setErro(error.message)
+    else setCandidatos(data ?? [])
+  }
+
+  async function confirmar() {
+    if (!confirm(`Confirma a anonimização de ${candidatos?.length ?? 0} colaborador(es) inativo(s)? Essa ação não pode ser desfeita.`)) {
+      return
+    }
+    setCarregando(true)
+    setErro(null)
+    const { error } = await supabase.rpc('anonimizar_colaboradores_antigos', {
+      p_anos_retencao: anos,
+      p_somente_simular: false,
+    })
+    setCarregando(false)
+    if (error) {
+      setErro(error.message)
+      return
+    }
+    setMensagem('Anonimização concluída.')
+    setCandidatos(null as any)
+  }
+
+  return (
+    <div className="expurgo">
+      <h3>Expurgo / anonimização de ex-colaboradores</h3>
+      <p className="nota">
+        Afeta só colaboradores <strong>inativos</strong> sem atividade há mais que o prazo abaixo. Mantém
+        os lançamentos (para obrigação legal), remove nome/matrícula/login. Não pode ser desfeito.
+      </p>
+      <div className="acoes">
+        <label className="inline">
+          Prazo de retenção (anos)
+          <input type="number" min={1} value={anos} onChange={(e) => setAnos(Number(e.target.value))} style={{ width: 60 }} />
+        </label>
+        <button onClick={simular} disabled={carregando}>
+          {carregando ? 'Verificando…' : 'Verificar quem seria afetado'}
+        </button>
+      </div>
+
+      {erro && <p className="erro">{erro}</p>}
+      {mensagem && <p className="sucesso">{mensagem}</p>}
+
+      {candidatos && (
+        candidatos.length === 0 ? (
+          <p>Nenhum colaborador inativo passou do prazo.</p>
+        ) : (
+          <>
+            <table>
+              <thead>
+                <tr>
+                  <th>Nome</th>
+                  <th>Matrícula</th>
+                  <th>Última atividade</th>
+                </tr>
+              </thead>
+              <tbody>
+                {candidatos.map((c) => (
+                  <tr key={c.colaborador_id}>
+                    <td>{c.nome_anterior}</td>
+                    <td>{c.matricula_anterior}</td>
+                    <td>{formatarDataBR(c.ultima_atividade)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <button className="btn-recusar" onClick={confirmar} disabled={carregando}>
+              Confirmar anonimização
+            </button>
+          </>
+        )
+      )}
     </div>
   )
 }

@@ -1,129 +1,214 @@
-# App Horas Extras — Colégio (Etapa 1: estrutura de dados)
+# App Horas Extras — Colégio
 
-Esta etapa entrega **só o banco**: tabelas, índices, constraints e Row Level
-Security (RLS) no Supabase. Sem interface ainda.
+App de controle e aprovação de horas extras. Camada de **justificativa e
+aprovação** — o ponto eletrônico continua sendo o registro oficial de
+jornada, este sistema só organiza o fluxo de lançar, aprovar e apurar.
 
-Este app é a camada de **justificativa e aprovação** de horas extras. O
-ponto eletrônico continua sendo o registro oficial de jornada.
+- **Frontend**: React + Vite (TypeScript), hospedado no GitHub Pages.
+- **Backend**: Supabase (Postgres + Auth + Row Level Security).
+- **Perfis**: colaborador, coordenador, RH — cada um só acessa o que a
+  policy do banco libera, não é uma trava só de tela.
+- **Login**: por CPF (convertido internamente para um e-mail sintético só
+  para o Supabase Auth entender — nunca exibido, nunca usado pra enviar
+  nada).
 
-## Arquivos
+## Estrutura do repositório
 
-- [sql/01_schema_rls.sql](sql/01_schema_rls.sql) — script completo: tabelas, índices, constraints, triggers e policies de RLS.
-- [sql/02_seed_dados_teste.sql](sql/02_seed_dados_teste.sql) — massa de teste: 5 colaboradores, 1 coordenador, 1 RH, lançamentos em estados variados.
+```
+sql/    scripts SQL, na ordem em que devem ser rodados (veja abaixo)
+web/    o app React/Vite
+.github/workflows/   deploy automático + keep-alive do Supabase
+```
 
 ## 1. Criar o projeto no Supabase
 
-1. Acesse [supabase.com](https://supabase.com) e crie uma conta/organização, se ainda não tiver.
-2. **New project** → escolha um nome (ex: `horas-extras-colegio`), uma senha forte para o banco (guarde-a) e a região mais próxima (ex: São Paulo/`sa-east-1`, se disponível).
-3. Aguarde o provisionamento (leva 1–2 minutos).
-4. No menu lateral, vá em **SQL Editor**.
+1. [supabase.com](https://supabase.com) → crie conta/organização.
+2. **New project** → nome (ex: `horas-extras-colegio`), senha do banco
+   (guarde — não é possível ver de novo depois) e região (São Paulo/
+   `sa-east-1`, se disponível).
+3. Aguarde o provisionamento.
+4. No menu lateral: **SQL Editor**.
 
-## 2. Rodar o script de schema
+## 2. Rodar os scripts SQL, nesta ordem
 
-1. No SQL Editor, clique em **New query**.
-2. Cole todo o conteúdo de [sql/01_schema_rls.sql](sql/01_schema_rls.sql).
-3. Clique em **Run**. Deve terminar sem erros (ele já inclui `create extension if not exists pgcrypto`).
-4. Confira em **Table Editor** que as 8 tabelas apareceram: `rh_usuarios`, `coordenadores`, `colaboradores`, `lancamentos`, `aceites`, `historico`, `log_acesso`, `feriados`.
+Cada um é uma **nova query** no SQL Editor, colar tudo e **Run**.
 
-## 3. Rodar a massa de dados de teste
+| Ordem | Arquivo | O que faz |
+|---|---|---|
+| 1 | [sql/01_schema_rls.sql](sql/01_schema_rls.sql) | Tabelas, índices, constraints, triggers e todas as policies de RLS. |
+| 2 | [sql/03_funcao_meu_perfil.sql](sql/03_funcao_meu_perfil.sql) | Função que o app usa pra saber se quem logou é colaborador, coordenador ou RH. |
+| 3 | [sql/05_privacidade.sql](sql/05_privacidade.sql) | Tabela de aceite do aviso de privacidade (LGPD). |
+| 4 | [sql/07_prazo_lancamento.sql](sql/07_prazo_lancamento.sql) | Regras de prazo de lançamento (2 dias corridos, mês corrente, exceção do último dia), aplicadas no servidor. |
+| 5 | [sql/10_painel_rh.sql](sql/10_painel_rh.sql) | Indicador de excesso (>2h/dia ou >20h/mês) e justificativa obrigatória em inclusão manual. |
+| 6 | [sql/13_expurgo_anonimizacao.sql](sql/13_expurgo_anonimizacao.sql) | Função de expurgo/anonimização de ex-colaboradores. |
 
-1. Nova query no SQL Editor.
-2. Cole todo o conteúdo de [sql/02_seed_dados_teste.sql](sql/02_seed_dados_teste.sql).
-3. **Run**.
+`sql/02_seed_dados_teste.sql` é **opcional** — só se você quiser dados
+fictícios pra testar antes de cadastrar gente de verdade (veja a seção de
+testes de RLS mais abaixo). Se rodar, depois é só rodar
+`sql/11_limpar_dados_teste.sql` pra tirar tudo de novo.
 
-Isso cria:
-- 7 usuários em `auth.users` (senha de teste `senha123` para todos, e-mails `rh@colegio.test`, `coordenador@colegio.test`, `colaborador1@colegio.test` … `colaborador5@colegio.test`). **Esses usuários servem só para satisfazer a chave estrangeira e simular perfis no SQL Editor — não são login real da aplicação.** Quando a interface existir, crie os usuários reais por *Authentication > Users* (ou pela API de signup) e atualize a coluna `user_id` nas tabelas correspondentes com o UUID gerado pelo Supabase Auth.
-- 1 RH, 1 coordenador, 5 colaboradores vinculados ao coordenador.
-- 6 feriados de 2026.
-- 5 lançamentos (um por colaborador) em status variados: aprovado, pendente, recusado, pendente (inclusão manual do RH) e aprovado.
-- Aceites e histórico correspondentes.
+Os arquivos `04`, `08`, `09`, `12` são scripts de correção/limpeza
+pontuais que já foram usados durante o desenvolvimento — não precisam ser
+rodados de novo num projeto novo.
 
-## Por que existe a tabela `rh_usuarios`
+## 3. Cadastrar pessoas reais
 
-Você pediu as tabelas `colaboradores`, `coordenadores`, `lancamentos`, `aceites`,
-`historico`, `log_acesso` e `feriados`. Adicionei `rh_usuarios` porque o RLS
-do Supabase só sabe filtrar linhas comparando com `auth.uid()` — sem uma
-tabela dizendo "este `auth.users.id` é RH", não existe como a policy
-diferenciar RH de coordenador de colaborador. Pelo mesmo motivo,
-`colaboradores` e `coordenadores` ganharam uma coluna `user_id` (referência
-a `auth.users`), que é o vínculo entre a pessoa física e a conta de login.
+Cada pessoa precisa de duas coisas: um cadastro (tabela `colaboradores`
+ou `coordenadores`) e um login (`auth.users`, vinculado pelo `user_id`).
 
-## Como as regras de acesso foram implementadas
+**Pelo painel do RH** (depois que o app estiver publicado): aba
+Colaboradores/Coordenadores → cadastra a pessoa. Isso só cria o
+*cadastro*, não o login.
 
-- **Funções auxiliares** (`is_rh`, `is_coordenador`, `get_colaborador_id`, `get_coordenador_id`, `colaborador_coordenador_id`): rodam como `SECURITY DEFINER` para responder "quem é esse usuário" sem cair em recursão de RLS. Toda policy usa essas funções.
-- **Colaborador**: `SELECT`/`INSERT` só do que é dele (`lancamentos_insert_colaborador`, `colaboradores_select`). Não existe policy de `UPDATE`/`DELETE` para colaborador em `lancamentos` — sem policy, o Postgres nega por padrão. Um trigger (`trg_lancamentos_before_insert`) também força `status = 'pendente'` e zera `aprovado_por`/`decidido_em` no insert, não importa o que o cliente mande.
-- **Coordenador**: enxerga e atualiza só os lançamentos de colaboradores com `coordenador_id` igual ao dele, e só enquanto `status = 'pendente'`. Um trigger (`trg_lancamentos_before_update`) bloqueia qualquer tentativa de alterar campos além do status.
-- **RH**: `is_rh(auth.uid())` libera tudo nas policies. Só o RH pode inserir/atualizar `colaboradores`, `coordenadores`, `feriados`, e é o único que pode inserir em `rh_usuarios` (`rh_usuarios_insert` exige `is_rh(auth.uid())`) — ou seja, **só um RH promove outro RH**, nunca um colaborador ou coordenador, nem por chamada direta à API. O primeiro RH do sistema só pode ser criado via SQL Editor/service role (que sempre ignora RLS), o que já é, por si só, uma barreira de acesso equivalente a "só admin cria o primeiro RH".
-- **Indicador de excesso de jornada**: não existe como coluna em `lancamentos` nem em view comum. É a função `rh_indicador_excesso_jornada()`, `SECURITY DEFINER`, que verifica `is_rh(auth.uid())` **antes** de montar qualquer linha e lança exceção para quem não é RH. Assim o dado nunca chega a existir na resposta para colaborador/coordenador — não é uma coluna escondida, é a consulta inteira barrada na camada de dados.
-- **Histórico**: só `INSERT` (automático via trigger a cada criação/mudança de status, e manual para o RH registrar justificativa). Não há policy nem grant de `UPDATE`/`DELETE` — imutável em duas camadas (RLS e GRANT).
-- **Log de acesso**: tabela e policies prontas (`SELECT` só RH, `INSERT` de qualquer usuário autenticado só na própria linha). Nesta etapa **não há gatilho automático populando essa tabela** — isso terá que ser feito pela aplicação, quando a interface existir, a cada consulta a dados de um colaborador.
+**Para criar o login**, no SQL Editor do Supabase (`gen_random_uuid()` e
+`crypt()` exigem a extensão `pgcrypto`, já habilitada pelo script 01):
 
-## Como testar as policies no SQL Editor, simulando cada perfil
+```sql
+-- Troque o CPF e o nome. A senha do exemplo é só ilustrativa.
+with novo as (
+  insert into auth.users (
+    instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
+    confirmation_token, recovery_token, email_change, email_change_token_new,
+    email_change_token_current, phone_change, phone_change_token, reauthentication_token,
+    raw_app_meta_data, raw_user_meta_data, created_at, updated_at
+  ) values (
+    '00000000-0000-0000-0000-000000000000', gen_random_uuid(), 'authenticated', 'authenticated',
+    '12345678900@colegioatitude.local', crypt('SenhaTemporaria123', gen_salt('bf')), now(),
+    '', '', '', '', '', '', '', '',
+    '{"provider":"email","providers":["email"]}', '{}', now(), now()
+  )
+  returning id
+)
+insert into auth.identities (id, provider_id, user_id, identity_data, provider, last_sign_in_at, created_at, updated_at)
+select gen_random_uuid(), novo.id::text, novo.id, jsonb_build_object('sub', novo.id::text, 'email', '12345678900@colegioatitude.local'), 'email', now(), now(), now()
+from novo
+returning user_id;
+```
 
-O Supabase permite simular um usuário autenticado numa sessão SQL sem
-precisar de login real: você define localmente o papel `authenticated` e o
-`request.jwt.claims` com o `sub` (UUID do usuário). Isso é só para teste —
-a aplicação de verdade recebe esse JWT automaticamente do Supabase Auth.
+Copie o `user_id` retornado e cole na coluna `user_id` da linha
+correspondente em `colaboradores` ou `coordenadores` (Table Editor).
 
-Abra uma **nova query** no SQL Editor para cada teste (ou rode `reset role;`
-entre os blocos).
+O e-mail sintético é sempre `<cpf só números>@colegioatitude.local` — é
+isso que a pessoa "digita" indiretamente quando entra com o CPF na tela
+de login (o app monta esse e-mail por baixo dos panos).
 
-### Como colaborador (Beatriz — só vê o que é dela)
+## 4. Publicar no GitHub Pages
+
+1. Crie um repositório no GitHub (público — Pages grátis exige isso).
+2. `cd web && npm install`
+3. Configure `web/.env.production` (não commitado por padrão — veja
+   `web/.env.example`) com `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY`
+   do seu projeto. A anon key não é secreta (é protegida pelo RLS), então
+   pode ficar num arquivo comitado se preferir simplicidade — foi assim
+   que este projeto foi feito.
+4. No GitHub: **Settings → Pages → Source: GitHub Actions**.
+5. O workflow [.github/workflows/deploy.yml](.github/workflows/deploy.yml)
+   já builda e publica a cada push na `main`. Ajuste o `BASE_PATH` nele
+   para `/<nome-do-repositório>/`.
+6. Primeiro push → aba **Actions** do GitHub mostra o deploy rodando.
+
+## 5. Keep-alive do plano gratuito
+
+Projetos gratuitos do Supabase pausam depois de ~7 dias sem atividade. O
+workflow [.github/workflows/keep-alive.yml](.github/workflows/keep-alive.yml)
+faz uma consulta simples a cada 5 dias pra evitar isso.
+
+Configure os secrets do repositório (**Settings → Secrets and variables →
+Actions**):
+- `SUPABASE_URL`: a URL do seu projeto.
+- `SUPABASE_ANON_KEY`: a anon key.
+
+## 6. Expurgo / anonimização
+
+Aba **Colaboradores** do painel do RH → seção "Expurgo/anonimização" no
+final da página. Verifica quem está inativo há mais que o prazo
+configurado (padrão 5 anos) e, se confirmado, anonimiza nome/matrícula
+mantendo os lançamentos (para obrigação legal de guarda de registros).
+Não é automático — alguém do RH precisa revisar a lista antes de
+confirmar.
+
+## Estrutura de dados e RLS
+
+- **Tabelas**: `colaboradores`, `coordenadores`, `rh_usuarios`,
+  `lancamentos`, `aceites`, `aceites_privacidade`, `historico`,
+  `log_acesso`, `feriados`.
+- **`rh_usuarios`** não estava na lista original de tabelas pedidas —
+  existe porque o RLS do Supabase só sabe filtrar comparando com
+  `auth.uid()`; sem essa tabela não haveria como a policy saber quem é
+  RH. Pelo mesmo motivo, `colaboradores` e `coordenadores` têm uma
+  coluna `user_id` — o vínculo entre a pessoa e a conta de login.
+- **Funções auxiliares** (`is_rh`, `is_coordenador`,
+  `get_colaborador_id`, `get_coordenador_id`,
+  `colaborador_coordenador_id`): `SECURITY DEFINER`, respondem "quem é
+  esse usuário" sem cair em recursão de RLS. Toda policy usa essas
+  funções.
+- **Colaborador**: só lê/insere o que é dele. Sem policy de
+  `UPDATE`/`DELETE` em `lancamentos` — sem policy, o Postgres nega por
+  padrão. Um trigger força `status = 'pendente'` no insert e valida o
+  prazo (2 dias corridos, mês corrente, exceção do último dia até 08h do
+  1º dia útil seguinte), rejeitando no servidor mesmo que alguém
+  contorne a tela.
+- **Coordenador**: só vê/decide lançamentos da própria equipe, e só
+  enquanto `pendente`. Um trigger bloqueia qualquer alteração além do
+  status.
+- **RH**: acesso total via `is_rh(auth.uid())`. Só RH cadastra
+  colaborador/coordenador/feriado, só RH promove outro RH (inclusive
+  contra chamada direta de API), e só RH pode corrigir um status já
+  decidido.
+- **Indicador de excesso de jornada** (`rh_indicador_excesso_jornada()`):
+  marca lançamento do dia >2h ou acumulado do mês >20h, considerando só
+  aprovados. `SECURITY DEFINER`, verifica `is_rh()` antes de montar
+  qualquer linha — não é uma coluna escondida por policy, é a consulta
+  inteira barrada. Colaborador e coordenador não têm acesso, em nenhuma
+  tela, exportação ou resposta de API.
+- **Histórico**: só `INSERT` (automático via trigger a cada
+  criação/mudança de status, manual para o RH registrar justificativa).
+  Sem policy nem grant de `UPDATE`/`DELETE`.
+- **Log de acesso**: tabela e policies prontas, mas ainda não há gatilho
+  populando automaticamente — fica para quando a tela de detalhe de
+  colaborador registrar cada consulta.
+- **Aviso de privacidade**: `aceites_privacidade` registra usuário, texto
+  aceito, versão e data/hora, na primeira vez que cada pessoa loga. Base
+  legal declarada: cumprimento de obrigação legal e execução do contrato
+  de trabalho — não é consentimento, mas o aceite fica registrado para
+  transparência.
+
+## Como testar as policies direto no SQL Editor
+
+Só funciona se você tiver rodado `sql/02_seed_dados_teste.sql` (dados
+fictícios). O Supabase permite simular um usuário autenticado sem login
+real: define-se `role authenticated` e o `sub` do JWT localmente.
 
 ```sql
 set local role authenticated;
 set local request.jwt.claims = '{"sub":"c0000000-0000-0000-0000-000000000001","role":"authenticated"}';
 
-select id, colaborador_id, status from public.lancamentos; -- só deve trazer o lançamento dela
+select id, colaborador_id, status from public.lancamentos; -- só o que é do colaborador
 select * from public.rh_indicador_excesso_jornada(); -- deve dar erro "acesso negado"
 
 reset role;
 ```
 
-### Como coordenador (Marcos — vê e aprova a equipe dele)
+Troque o `sub` pelos outros UUIDs de teste (coordenador
+`b0000000-...-001`, RH `a0000000-...-001`) para simular cada perfil.
 
-```sql
-set local role authenticated;
-set local request.jwt.claims = '{"sub":"b0000000-0000-0000-0000-000000000001","role":"authenticated"}';
+## Segurança de dados pessoais
 
-select id, colaborador_id, status from public.lancamentos; -- deve trazer os 5 lançamentos da equipe
-update public.lancamentos set status = 'aprovado' where id = 'f0000000-0000-0000-0000-000000000002'; -- deve funcionar (estava pendente)
-update public.lancamentos set hora_entrada = '06:00' where id = 'f0000000-0000-0000-0000-000000000001'; -- deve dar erro: só pode mudar status, e o lançamento já não está pendente
-select * from public.rh_indicador_excesso_jornada(); -- deve dar erro "acesso negado"
+- Nenhum dado pessoal aparece em URL ou parâmetro de query — o app é uma
+  SPA sem router baseado em URL, todo o estado fica em memória/Supabase.
+- CPF é usado só como identificador de login e matrícula — não é exibido
+  em nenhuma tela fora do que o próprio RH já teria acesso.
+- Arquivos com CPF real (scripts de importação de funcionários) nunca são
+  commitados — ficam fora do controle de versão (veja `.gitignore`,
+  padrão `sql/*_PRIVADO_*.sql`).
 
-reset role;
-```
+## Limitações conhecidas / próximos passos
 
-### Como RH (Ana Paula — acesso total)
-
-```sql
-set local role authenticated;
-set local request.jwt.claims = '{"sub":"a0000000-0000-0000-0000-000000000001","role":"authenticated"}';
-
-select count(*) from public.lancamentos; -- deve trazer todos
-select * from public.rh_indicador_excesso_jornada(10); -- deve funcionar e retornar o indicador
-insert into public.rh_usuarios (user_id, nome) values ('c0000000-0000-0000-0000-000000000004', 'Eduardo (novo RH)'); -- deve funcionar, só RH promove RH
-delete from public.historico where lancamento_id = 'f0000000-0000-0000-0000-000000000001'; -- deve dar erro: sem policy de delete
-
-reset role;
-```
-
-### Tentando burlar (colaborador tentando virar RH)
-
-```sql
-set local role authenticated;
-set local request.jwt.claims = '{"sub":"c0000000-0000-0000-0000-000000000002","role":"authenticated"}';
-
-insert into public.rh_usuarios (user_id, nome) values ('c0000000-0000-0000-0000-000000000002', 'Carlos (tentando virar RH)');
--- deve dar erro de RLS: "new row violates row-level security policy"
-
-reset role;
-```
-
-Se algum `select` trouxer 0 linhas quando deveria trazer, ou algum `insert`/`update` passar quando deveria falhar, é sinal de que a policy correspondente precisa de ajuste.
-
-## Próximos passos (fora desta etapa)
-
-- Interface (provavelmente React/Vite no GitHub Pages) consumindo o Supabase via `supabase-js`, usando o Supabase Auth para login real.
-- Popular `log_acesso` a partir da aplicação a cada consulta a dados de colaborador.
-- Revisar a lista de `motivo` em `lancamentos` (hoje é um placeholder) e o limite de horas usado em `rh_indicador_excesso_jornada`.
+- Redefinição de senha por e-mail não está disponível (login é por CPF,
+  não há e-mail real cadastrado por padrão) — reset é manual, pelo RH,
+  via Supabase Dashboard. Se coletar e-mail real de cada pessoa no
+  futuro, dá pra ligar o fluxo padrão do Supabase Auth.
+- `log_acesso` ainda não é populado automaticamente.
+- Exportação em PDF usa a função de impressão do navegador (sem
+  dependência extra) — funciona bem, mas o layout depende do
+  navegador/impressora escolhida pelo usuário.
