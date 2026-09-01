@@ -1,6 +1,7 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { supabase } from '../lib/supabaseClient'
-import { baixarCsv, formatarDataBR } from '../lib/csv'
+import { baixarCsv, abrirPdf, formatarDataBR } from '../lib/csv'
+import { formatarDuracao, intervaloParaHoras } from '../lib/prazo'
 import {
   MOTIVOS,
   type Coordenador,
@@ -53,16 +54,29 @@ function AbaLancamentos() {
   const [colaboradores, setColaboradores] = useState<Colaborador[]>([])
   const [carregando, setCarregando] = useState(true)
   const [erro, setErro] = useState<string | null>(null)
-  const [filtro, setFiltro] = useState<'todos' | 'pendente' | 'aprovado' | 'recusado'>('todos')
   const [mostrarForm, setMostrarForm] = useState(false)
+  const [modo, setModo] = useState<'lista' | 'agrupado'>('lista')
+
+  const mesAtual = new Date().toISOString().slice(0, 7)
+  const [filtroStatus, setFiltroStatus] = useState<'todos' | 'pendente' | 'aprovado' | 'recusado'>('todos')
+  const [filtroMes, setFiltroMes] = useState(mesAtual)
+  const [filtroColaboradorId, setFiltroColaboradorId] = useState('')
+  const [filtroSetor, setFiltroSetor] = useState('')
 
   async function carregar() {
     setCarregando(true)
     let query = supabase
       .from('lancamentos')
-      .select('*, colaboradores(nome_completo, matricula)')
+      .select('*, colaboradores(nome_completo, matricula, setor)')
       .order('data_hora_extra', { ascending: false })
-    if (filtro !== 'todos') query = query.eq('status', filtro)
+    if (filtroStatus !== 'todos') query = query.eq('status', filtroStatus)
+    if (filtroColaboradorId) query = query.eq('colaborador_id', filtroColaboradorId)
+    if (filtroMes) {
+      const inicio = `${filtroMes}-01`
+      const [ano, mes] = filtroMes.split('-').map(Number)
+      const proximo = mes === 12 ? `${ano + 1}-01-01` : `${ano}-${String(mes + 1).padStart(2, '0')}-01`
+      query = query.gte('data_hora_extra', inicio).lt('data_hora_extra', proximo)
+    }
     const { data, error } = await query
     if (error) setErro(error.message)
     else setLancamentos(data as unknown as Lancamento[])
@@ -75,9 +89,56 @@ function AbaLancamentos() {
       .from('colaboradores')
       .select('*')
       .eq('ativo', true)
+      .order('nome_completo')
       .then(({ data }) => setColaboradores((data as Colaborador[]) ?? []))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filtro])
+  }, [filtroStatus, filtroColaboradorId, filtroMes])
+
+  const visiveis = useMemo(
+    () => (filtroSetor ? lancamentos.filter((l) => l.colaboradores?.setor === filtroSetor) : lancamentos),
+    [lancamentos, filtroSetor],
+  )
+
+  const setores = ['Bosque', 'Horto']
+
+  const totalizadores = useMemo(() => {
+    const aprovados = visiveis.filter((l) => l.status === 'aprovado')
+    const totalHoras = aprovados.reduce((s, l) => s + intervaloParaHoras(l.duracao_calculada), 0)
+    const pendentes = visiveis.filter((l) => l.status === 'pendente').length
+    const porColaborador = new Map<string, { nome: string; horas: number }>()
+    for (const l of aprovados) {
+      const nome = l.colaboradores?.nome_completo ?? '—'
+      const atual = porColaborador.get(l.colaborador_id) ?? { nome, horas: 0 }
+      atual.horas += intervaloParaHoras(l.duracao_calculada)
+      porColaborador.set(l.colaborador_id, atual)
+    }
+    let quemMaisLancou: { nome: string; horas: number } | null = null
+    for (const v of porColaborador.values()) {
+      if (!quemMaisLancou || v.horas > quemMaisLancou.horas) quemMaisLancou = v
+    }
+    return { totalHoras, pendentes, quemMaisLancou }
+  }, [visiveis])
+
+  const agrupado = useMemo(() => {
+    const mapa = new Map<
+      string,
+      { nome: string; matricula: string; horasAprovadas: number; qtdLancamentos: number; qtdPendentes: number }
+    >()
+    for (const l of visiveis) {
+      const atual = mapa.get(l.colaborador_id) ?? {
+        nome: l.colaboradores?.nome_completo ?? '—',
+        matricula: l.colaboradores?.matricula ?? '—',
+        horasAprovadas: 0,
+        qtdLancamentos: 0,
+        qtdPendentes: 0,
+      }
+      atual.qtdLancamentos += 1
+      if (l.status === 'aprovado') atual.horasAprovadas += intervaloParaHoras(l.duracao_calculada)
+      if (l.status === 'pendente') atual.qtdPendentes += 1
+      mapa.set(l.colaborador_id, atual)
+    }
+    return Array.from(mapa.values()).sort((a, b) => b.horasAprovadas - a.horasAprovadas)
+  }, [visiveis])
 
   async function decidir(id: string, novoStatus: 'aprovado' | 'recusado' | 'pendente') {
     const { error } = await supabase.from('lancamentos').update({ status: novoStatus }).eq('id', id)
@@ -85,38 +146,109 @@ function AbaLancamentos() {
     carregar()
   }
 
-  function exportar() {
-    baixarCsv(
-      'lancamentos.csv',
-      lancamentos.map((l) => ({
-        colaborador: l.colaboradores?.nome_completo ?? '',
-        matricula: l.colaboradores?.matricula ?? '',
-        data: l.data_hora_extra,
-        entrada: l.hora_entrada,
-        saida: l.hora_saida,
-        motivo: l.motivo,
-        destino: l.destino,
-        status: l.status,
-        origem: l.origem,
-      })),
+  function linhasParaExportar() {
+    return visiveis.map((l) => ({
+      colaborador: l.colaboradores?.nome_completo ?? '',
+      matricula: l.colaboradores?.matricula ?? '',
+      setor: l.colaboradores?.setor ?? '',
+      data: l.data_hora_extra,
+      entrada: l.hora_entrada,
+      saida: l.hora_saida,
+      duracao: formatarDuracao(l.duracao_calculada),
+      motivo: l.motivo,
+      destino: l.destino === 'banco_horas' ? 'banco_horas' : 'folha',
+      status: l.status,
+      origem: l.origem,
+    }))
+  }
+
+  function exportarCsv() {
+    baixarCsv(`lancamentos_${filtroMes}.csv`, linhasParaExportar())
+  }
+
+  function exportarPdf() {
+    abrirPdf(
+      `Lançamentos — ${filtroMes}`,
+      ['Colaborador', 'Matrícula', 'Unidade', 'Data', 'Entrada', 'Saída', 'Duração', 'Destino', 'Status'],
+      visiveis.map((l) => [
+        l.colaboradores?.nome_completo ?? '',
+        l.colaboradores?.matricula ?? '',
+        l.colaboradores?.setor ?? '',
+        formatarDataBR(l.data_hora_extra),
+        l.hora_entrada,
+        l.hora_saida,
+        formatarDuracao(l.duracao_calculada),
+        l.destino === 'banco_horas' ? 'Banco de horas' : 'Folha',
+        LABEL_STATUS[l.status],
+      ]),
     )
   }
 
   return (
     <div className="cartao">
       <div className="cartao-titulo">
-        <h2>Todos os lançamentos</h2>
+        <h2>Lançamentos</h2>
         <div className="acoes">
-          <select value={filtro} onChange={(e) => setFiltro(e.target.value as any)}>
+          <button onClick={exportarCsv}>Exportar CSV</button>
+          <button onClick={exportarPdf}>Exportar PDF</button>
+          <button onClick={() => setMostrarForm((v) => !v)}>
+            {mostrarForm ? 'Cancelar' : '+ Inclusão manual'}
+          </button>
+        </div>
+      </div>
+
+      <div className="filtros">
+        <label>
+          Período
+          <input type="month" value={filtroMes} onChange={(e) => setFiltroMes(e.target.value)} />
+        </label>
+        <label>
+          Pessoa
+          <select value={filtroColaboradorId} onChange={(e) => setFiltroColaboradorId(e.target.value)}>
+            <option value="">Todas</option>
+            {colaboradores.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.nome_completo}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Unidade
+          <select value={filtroSetor} onChange={(e) => setFiltroSetor(e.target.value)}>
+            <option value="">Todos</option>
+            {setores.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Status
+          <select value={filtroStatus} onChange={(e) => setFiltroStatus(e.target.value as any)}>
             <option value="todos">Todos</option>
             <option value="pendente">Pendentes</option>
             <option value="aprovado">Aprovados</option>
             <option value="recusado">Recusados</option>
           </select>
-          <button onClick={exportar}>Exportar CSV</button>
-          <button onClick={() => setMostrarForm((v) => !v)}>
-            {mostrarForm ? 'Cancelar' : '+ Inclusão manual'}
-          </button>
+        </label>
+      </div>
+
+      <div className="totalizadores">
+        <div className="totalizador">
+          <span className="totalizador-valor">{totalizadores.totalHoras.toFixed(1)}h</span>
+          <span className="totalizador-label">total aprovado no período</span>
+        </div>
+        <div className="totalizador">
+          <span className="totalizador-valor">{totalizadores.quemMaisLancou?.nome ?? '—'}</span>
+          <span className="totalizador-label">
+            quem mais lançou{totalizadores.quemMaisLancou ? ` (${totalizadores.quemMaisLancou.horas.toFixed(1)}h)` : ''}
+          </span>
+        </div>
+        <div className="totalizador">
+          <span className="totalizador-valor">{totalizadores.pendentes}</span>
+          <span className="totalizador-label">pendentes no período</span>
         </div>
       </div>
 
@@ -132,8 +264,46 @@ function AbaLancamentos() {
 
       {erro && <p className="erro">{erro}</p>}
 
+      <div className="abas abas-secundarias">
+        <button className={modo === 'lista' ? 'aba-ativa' : ''} onClick={() => setModo('lista')}>
+          Lista
+        </button>
+        <button className={modo === 'agrupado' ? 'aba-ativa' : ''} onClick={() => setModo('agrupado')}>
+          Agrupado por colaborador
+        </button>
+      </div>
+
       {carregando ? (
         <p>Carregando…</p>
+      ) : modo === 'agrupado' ? (
+        agrupado.length === 0 ? (
+          <p>Nenhum lançamento no período.</p>
+        ) : (
+          <table>
+            <thead>
+              <tr>
+                <th>Colaborador</th>
+                <th>Matrícula</th>
+                <th>Total aprovado</th>
+                <th>Lançamentos</th>
+                <th>Pendentes</th>
+              </tr>
+            </thead>
+            <tbody>
+              {agrupado.map((c) => (
+                <tr key={c.matricula}>
+                  <td>{c.nome}</td>
+                  <td>{c.matricula}</td>
+                  <td>{c.horasAprovadas.toFixed(1)}h</td>
+                  <td>{c.qtdLancamentos}</td>
+                  <td>{c.qtdPendentes}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )
+      ) : visiveis.length === 0 ? (
+        <p>Nenhum lançamento no período.</p>
       ) : (
         <table>
           <thead>
@@ -141,7 +311,7 @@ function AbaLancamentos() {
               <th>Colaborador</th>
               <th>Data</th>
               <th>Horário</th>
-              <th>Motivo</th>
+              <th>Duração</th>
               <th>Destino</th>
               <th>Origem</th>
               <th>Status</th>
@@ -149,16 +319,18 @@ function AbaLancamentos() {
             </tr>
           </thead>
           <tbody>
-            {lancamentos.map((l) => (
+            {visiveis.map((l) => (
               <tr key={l.id}>
                 <td>{l.colaboradores?.nome_completo ?? '—'}</td>
                 <td>{l.data_hora_extra}</td>
                 <td>
                   {l.hora_entrada}–{l.hora_saida}
                 </td>
-                <td>{MOTIVOS.find((m) => m.value === l.motivo)?.label ?? l.motivo}</td>
+                <td>{formatarDuracao(l.duracao_calculada)}</td>
                 <td>{l.destino === 'banco_horas' ? 'Banco de horas' : 'Folha'}</td>
-                <td>{l.origem === 'colaborador' ? 'Colaborador' : 'RH (manual)'}</td>
+                <td title={l.justificativa_manual ?? undefined}>
+                  {l.origem === 'colaborador' ? 'Colaborador' : 'RH (manual)'}
+                </td>
                 <td>
                   <span className={`status status-${l.status}`}>{LABEL_STATUS[l.status]}</span>
                 </td>
@@ -211,12 +383,17 @@ function FormInclusaoManual({
   const [motivo, setMotivo] = useState('')
   const [motivoOutro, setMotivoOutro] = useState('')
   const [destino, setDestino] = useState<'banco_horas' | 'folha'>('banco_horas')
+  const [justificativa, setJustificativa] = useState('')
   const [erro, setErro] = useState<string | null>(null)
   const [enviando, setEnviando] = useState(false)
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
     setErro(null)
+    if (justificativa.trim().length === 0) {
+      setErro('A justificativa é obrigatória em inclusão manual.')
+      return
+    }
     setEnviando(true)
     const { error } = await supabase.from('lancamentos').insert({
       colaborador_id: colaboradorId,
@@ -227,6 +404,7 @@ function FormInclusaoManual({
       motivo_outro_texto: motivo === 'outro' ? motivoOutro.trim() : null,
       destino,
       origem: 'rh_manual',
+      justificativa_manual: justificativa.trim(),
     })
     setEnviando(false)
     if (error) {
@@ -288,6 +466,16 @@ function FormInclusaoManual({
           <option value="banco_horas">Banco de horas</option>
           <option value="folha">Folha de pagamento</option>
         </select>
+      </label>
+      <label className="span-2">
+        Justificativa (obrigatória para inclusão manual)
+        <input
+          type="text"
+          value={justificativa}
+          onChange={(e) => setJustificativa(e.target.value)}
+          placeholder="Por que este lançamento está sendo incluído manualmente"
+          required
+        />
       </label>
 
       {erro && <p className="erro span-2">{erro}</p>}
@@ -361,7 +549,7 @@ function AbaColaboradores() {
               <th>Nome</th>
               <th>Matrícula</th>
               <th>Cargo</th>
-              <th>Setor</th>
+              <th>Unidade</th>
               <th>Coordenador</th>
               <th>Status</th>
               <th></th>
@@ -445,7 +633,7 @@ function FormColaborador({
         <input value={cargo} onChange={(e) => setCargo(e.target.value)} />
       </label>
       <label>
-        Setor
+        Unidade
         <input value={setor} onChange={(e) => setSetor(e.target.value)} />
       </label>
       <label>
@@ -526,7 +714,7 @@ function AbaCoordenadores() {
             <input value={nome} onChange={(e) => setNome(e.target.value)} required />
           </label>
           <label>
-            Setor
+            Unidade
             <input value={setor} onChange={(e) => setSetor(e.target.value)} />
           </label>
           <button type="submit" disabled={enviando}>
@@ -544,7 +732,7 @@ function AbaCoordenadores() {
           <thead>
             <tr>
               <th>Nome</th>
-              <th>Setor</th>
+              <th>Unidade</th>
               <th>Status</th>
               <th></th>
             </tr>
@@ -573,7 +761,6 @@ function AbaCoordenadores() {
 }
 
 function AbaIndicador() {
-  const [limite, setLimite] = useState(50)
   const [linhas, setLinhas] = useState<IndicadorExcesso[]>([])
   const [carregando, setCarregando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
@@ -581,9 +768,7 @@ function AbaIndicador() {
   async function consultar() {
     setCarregando(true)
     setErro(null)
-    const { data, error } = await supabase.rpc('rh_indicador_excesso_jornada', {
-      p_limite_horas_mes: limite,
-    })
+    const { data, error } = await supabase.rpc('rh_indicador_excesso_jornada')
     if (error) setErro(error.message)
     else setLinhas((data as IndicadorExcesso[]) ?? [])
     setCarregando(false)
@@ -591,44 +776,36 @@ function AbaIndicador() {
 
   useEffect(() => {
     consultar()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   return (
     <div className="cartao">
       <div className="cartao-titulo">
         <h2>Indicador de excesso de jornada</h2>
-        <div className="acoes">
-          <label className="inline">
-            Limite (h/mês)
-            <input
-              type="number"
-              value={limite}
-              min={1}
-              onChange={(e) => setLimite(Number(e.target.value))}
-              style={{ width: 70 }}
-            />
-          </label>
-          <button onClick={consultar}>Atualizar</button>
-        </div>
+        <button onClick={consultar}>Atualizar</button>
       </div>
 
-      <p className="nota">Considera apenas lançamentos aprovados. Visível somente para o RH.</p>
+      <p className="nota">
+        Marca quando o lançamento do dia passa de 2h ou o acumulado do mês passa de 20h. Considera só
+        lançamentos aprovados. Visível exclusivamente para o RH — colaborador e coordenador não têm
+        acesso a este dado em nenhuma tela, exportação ou resposta de API.
+      </p>
 
       {erro && <p className="erro">{erro}</p>}
 
       {carregando ? (
         <p>Carregando…</p>
       ) : linhas.length === 0 ? (
-        <p>Nenhum dado para o período.</p>
+        <p>Nenhum excesso encontrado.</p>
       ) : (
         <table>
           <thead>
             <tr>
               <th>Colaborador</th>
               <th>Matrícula</th>
-              <th>Mês</th>
-              <th>Total (h)</th>
+              <th>Data</th>
+              <th>Horas no dia</th>
+              <th>Horas no mês</th>
               <th>Excesso</th>
             </tr>
           </thead>
@@ -637,9 +814,13 @@ function AbaIndicador() {
               <tr key={i}>
                 <td>{l.nome_completo}</td>
                 <td>{l.matricula}</td>
-                <td>{l.mes_referencia}</td>
-                <td>{l.total_horas_mes}</td>
-                <td>{l.excesso ? <span className="status status-recusado">Sim</span> : 'Não'}</td>
+                <td>{formatarDataBR(l.data_hora_extra)}</td>
+                <td>{l.horas_no_dia}h</td>
+                <td>{l.horas_no_mes}h</td>
+                <td>
+                  {l.excesso_diario && <span className="status status-recusado">Dia</span>}{' '}
+                  {l.excesso_mensal && <span className="status status-recusado">Mês</span>}
+                </td>
               </tr>
             ))}
           </tbody>

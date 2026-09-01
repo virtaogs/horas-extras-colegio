@@ -129,3 +129,10 @@ export function formatarDuracao(intervalo: string): string {
   if (minutos === 0) return `${horas}h`
   return `${horas}h ${minutos}min`
 }
+
+export function intervaloParaHoras(intervalo: string): number {
+  const match = intervalo.match(/(\d+):(\d+):(\d+)$/)
+  if (!match) return 0
+  const [, h, m] = match
+  return Number(h) + Number(m) / 60
+}

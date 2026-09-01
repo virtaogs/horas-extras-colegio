@@ -32,12 +32,14 @@ export interface Lancamento {
   status: StatusLancamento
   destino: Destino
   origem: Origem
+  justificativa_manual: string | null
   enviado_em: string
   aprovado_por: string | null
   decidido_em: string | null
   colaboradores?: {
     nome_completo: string
     matricula: string
+    setor: string | null
   }
 }
 
@@ -64,7 +66,10 @@ export interface IndicadorExcesso {
   colaborador_id: string
   nome_completo: string
   matricula: string
+  data_hora_extra: string
   mes_referencia: string
-  total_horas_mes: number
-  excesso: boolean
+  horas_no_dia: number
+  horas_no_mes: number
+  excesso_diario: boolean
+  excesso_mensal: boolean
 }
