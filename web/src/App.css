@@ -150,6 +150,46 @@
   margin: 0;
 }
 
+.nota-prazo {
+  margin: -0.4rem 0 1rem;
+  font-size: 0.85rem;
+  color: var(--cor-texto-fraco);
+  background: var(--cor-fundo);
+  padding: 0.6rem 0.8rem;
+  border-radius: 8px;
+}
+
+.cartao-confirmacao {
+  max-width: 480px;
+  margin: 0 auto;
+}
+
+.resumo {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.4rem 1rem;
+  margin: 1.2rem 0;
+}
+
+.resumo dt {
+  color: var(--cor-texto-fraco);
+  font-size: 0.85rem;
+}
+
+.resumo dd {
+  margin: 0;
+  font-weight: 600;
+}
+
+.cartao-confirmacao button {
+  background: var(--cor-primaria);
+  color: white;
+  border: none;
+  font-weight: 600;
+  padding: 0.6rem;
+  width: 100%;
+}
+
 .form-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);

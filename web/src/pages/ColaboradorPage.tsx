@@ -2,10 +2,11 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import { useAuth } from '../auth/AuthContext'
 import { MOTIVOS, type Lancamento } from '../lib/types'
+import { calcularPrazo, podeLancarData, formatarDuracao, type PrazoLancamento } from '../lib/prazo'
 
 const TEXTO_ACEITE =
-  'Declaro que as informações acima são verdadeiras e que a hora extra foi previamente combinada com minha coordenação.'
-const VERSAO_TEXTO_ACEITE = 'v1'
+  'Declaro que as informações acima são verdadeiras e que a hora extra foi efetivamente realizada.'
+const VERSAO_TEXTO_ACEITE = 'v2'
 
 const LABEL_STATUS: Record<string, string> = {
   pendente: 'Pendente',
@@ -18,8 +19,11 @@ export default function ColaboradorPage() {
   const [lancamentos, setLancamentos] = useState<Lancamento[]>([])
   const [carregando, setCarregando] = useState(true)
   const [erro, setErro] = useState<string | null>(null)
-  const [sucesso, setSucesso] = useState<string | null>(null)
   const [enviando, setEnviando] = useState(false)
+  const [confirmacao, setConfirmacao] = useState<Lancamento | null>(null)
+
+  const [feriados, setFeriados] = useState<string[]>([])
+  const [prazo, setPrazo] = useState<PrazoLancamento | null>(null)
 
   const [data, setData] = useState('')
   const [horaEntrada, setHoraEntrada] = useState('')
@@ -42,12 +46,28 @@ export default function ColaboradorPage() {
 
   useEffect(() => {
     carregarLancamentos()
+    supabase
+      .from('feriados')
+      .select('data')
+      .then(({ data: rows }) => {
+        const lista = (rows ?? []).map((r: { data: string }) => r.data)
+        setFeriados(lista)
+        setPrazo(calcularPrazo(lista))
+      })
   }, [])
+
+  function mensagemErroServidor(msg: string): string {
+    if (msg.includes('data futura')) return 'A data não pode ser futura.'
+    if (msg.includes('prazo')) return 'O prazo para lançar esta hora extra já encerrou — procure o RH.'
+    if (msg.includes('duplicate key') || msg.includes('idx_lancamentos_sem_duplicidade')) {
+      return 'Você já lançou uma hora extra com essa data e esse horário.'
+    }
+    return msg
+  }
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
     setErro(null)
-    setSucesso(null)
 
     if (!perfil || !session) return
     if (!aceite) {
@@ -56,6 +76,10 @@ export default function ColaboradorPage() {
     }
     if (motivo === 'outro' && motivoOutro.trim().length === 0) {
       setErro('Descreva o motivo quando escolher "Outro".')
+      return
+    }
+    if (!podeLancarData(data, feriados)) {
+      setErro('O prazo para lançar esta hora extra já encerrou — procure o RH.')
       return
     }
 
@@ -77,7 +101,7 @@ export default function ColaboradorPage() {
       .single()
 
     if (erroInsert || !novoLancamento) {
-      setErro(erroInsert?.message ?? 'Erro ao enviar lançamento.')
+      setErro(mensagemErroServidor(erroInsert?.message ?? 'Erro ao enviar lançamento.'))
       setEnviando(false)
       return
     }
@@ -92,7 +116,7 @@ export default function ColaboradorPage() {
     if (erroAceite) {
       setErro('Lançamento enviado, mas houve um erro ao registrar o aceite: ' + erroAceite.message)
     } else {
-      setSucesso('Lançamento enviado com sucesso.')
+      setConfirmacao(novoLancamento as Lancamento)
     }
 
     setData('')
@@ -106,14 +130,48 @@ export default function ColaboradorPage() {
     carregarLancamentos()
   }
 
+  if (confirmacao) {
+    return (
+      <div className="pagina">
+        <section className="cartao cartao-confirmacao">
+          <h2>Lançamento enviado ✓</h2>
+          <p className="subtitulo">Fica pendente até a aprovação do coordenador ou do RH.</p>
+          <dl className="resumo">
+            <dt>Data</dt>
+            <dd>{confirmacao.data_hora_extra}</dd>
+            <dt>Horário</dt>
+            <dd>
+              {confirmacao.hora_entrada}–{confirmacao.hora_saida}
+            </dd>
+            <dt>Duração</dt>
+            <dd>{formatarDuracao(confirmacao.duracao_calculada)}</dd>
+            <dt>Motivo</dt>
+            <dd>{MOTIVOS.find((m) => m.value === confirmacao.motivo)?.label ?? confirmacao.motivo}</dd>
+            <dt>Destino</dt>
+            <dd>{confirmacao.destino === 'banco_horas' ? 'Banco de horas' : 'Folha de pagamento'}</dd>
+          </dl>
+          <button onClick={() => setConfirmacao(null)}>Lançar outra hora extra</button>
+        </section>
+      </div>
+    )
+  }
+
   return (
     <div className="pagina">
       <section className="cartao">
         <h2>Lançar hora extra</h2>
+        {prazo && <p className="nota-prazo">{prazo.textoPrazo}</p>}
         <form onSubmit={handleSubmit} className="form-grid">
           <label>
             Data
-            <input type="date" value={data} onChange={(e) => setData(e.target.value)} required />
+            <input
+              type="date"
+              value={data}
+              min={prazo?.min}
+              max={prazo?.max}
+              onChange={(e) => setData(e.target.value)}
+              required
+            />
           </label>
           <label>
             Hora de entrada
@@ -171,7 +229,6 @@ export default function ColaboradorPage() {
           </label>
 
           {erro && <p className="erro span-2">{erro}</p>}
-          {sucesso && <p className="sucesso span-2">{sucesso}</p>}
 
           <button type="submit" className="span-2" disabled={enviando}>
             {enviando ? 'Enviando…' : 'Enviar lançamento'}
@@ -191,6 +248,7 @@ export default function ColaboradorPage() {
               <tr>
                 <th>Data</th>
                 <th>Horário</th>
+                <th>Duração</th>
                 <th>Motivo</th>
                 <th>Destino</th>
                 <th>Status</th>
@@ -203,6 +261,7 @@ export default function ColaboradorPage() {
                   <td>
                     {l.hora_entrada}–{l.hora_saida}
                   </td>
+                  <td>{formatarDuracao(l.duracao_calculada)}</td>
                   <td>{MOTIVOS.find((m) => m.value === l.motivo)?.label ?? l.motivo}</td>
                   <td>{l.destino === 'banco_horas' ? 'Banco de horas' : 'Folha'}</td>
                   <td>
