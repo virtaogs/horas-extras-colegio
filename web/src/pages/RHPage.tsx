@@ -143,20 +143,35 @@ function AbaLancamentos() {
     return Array.from(mapa.values()).sort((a, b) => b.horasAprovadas - a.horasAprovadas)
   }, [visiveis])
 
-  async function decidir(id: string, novoStatus: 'aprovado' | 'recusado' | 'pendente') {
-    let motivo: string | null = null
-    if (novoStatus === 'aprovado' || novoStatus === 'recusado') {
-      motivo = window.prompt(
-        `Motivo para marcar como ${novoStatus === 'aprovado' ? 'aprovado' : 'recusado'} (obrigatório, você é RH):`,
-      )
-      if (!motivo || motivo.trim().length === 0) return
-    }
+  const [correcaoAberta, setCorrecaoAberta] = useState<{
+    id: string
+    novoStatus: 'aprovado' | 'recusado' | 'pendente'
+  } | null>(null)
+  const [motivoCorrecao, setMotivoCorrecao] = useState('')
+
+  async function decidir(id: string, novoStatus: 'aprovado' | 'recusado' | 'pendente', motivo: string | null) {
     const { error } = await supabase
       .from('lancamentos')
       .update({ status: novoStatus, motivo_decisao: motivo })
       .eq('id', id)
     if (error) setErro(error.message)
+    setCorrecaoAberta(null)
+    setMotivoCorrecao('')
     carregar()
+  }
+
+  function iniciarDecisao(id: string, novoStatus: 'aprovado' | 'recusado' | 'pendente') {
+    if (novoStatus === 'pendente') {
+      decidir(id, novoStatus, null)
+      return
+    }
+    setMotivoCorrecao('')
+    setCorrecaoAberta({ id, novoStatus })
+  }
+
+  function confirmarCorrecao() {
+    if (!correcaoAberta || motivoCorrecao.trim().length === 0) return
+    decidir(correcaoAberta.id, correcaoAberta.novoStatus, motivoCorrecao.trim())
   }
 
   function linhasParaExportar() {
@@ -353,30 +368,54 @@ function AbaLancamentos() {
                   )}
                 </td>
                 <td>
-                  <div className="acoes">
-                    {l.status === 'pendente' && (
-                      <>
-                        <button className="btn-aprovar" onClick={() => decidir(l.id, 'aprovado')}>
-                          Aprovar
+                  {correcaoAberta?.id === l.id ? (
+                    <div className="form-motivo form-motivo-linha">
+                      <textarea
+                        value={motivoCorrecao}
+                        onChange={(e) => setMotivoCorrecao(e.target.value)}
+                        rows={2}
+                        placeholder={`Motivo para marcar como ${correcaoAberta.novoStatus} (obrigatório)`}
+                        autoFocus
+                      />
+                      <div className="acoes">
+                        <button
+                          className="btn-aprovar"
+                          disabled={motivoCorrecao.trim().length === 0}
+                          onClick={confirmarCorrecao}
+                        >
+                          Confirmar
                         </button>
-                        <button className="btn-recusar" onClick={() => decidir(l.id, 'recusado')}>
-                          Recusar
-                        </button>
-                      </>
-                    )}
-                    {l.status !== 'pendente' && (
-                      <select
-                        className="corrigir-status"
-                        value={l.status}
-                        onChange={(e) => decidir(l.id, e.target.value as 'aprovado' | 'recusado' | 'pendente')}
-                        title="Corrigir decisão (só o RH pode fazer isso)"
-                      >
-                        <option value="aprovado">Aprovado</option>
-                        <option value="recusado">Recusado</option>
-                        <option value="pendente">Voltar para pendente</option>
-                      </select>
-                    )}
-                  </div>
+                        <button onClick={() => setCorrecaoAberta(null)}>Cancelar</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="acoes">
+                      {l.status === 'pendente' && (
+                        <>
+                          <button className="btn-aprovar" onClick={() => iniciarDecisao(l.id, 'aprovado')}>
+                            Aprovar
+                          </button>
+                          <button className="btn-recusar" onClick={() => iniciarDecisao(l.id, 'recusado')}>
+                            Recusar
+                          </button>
+                        </>
+                      )}
+                      {l.status !== 'pendente' && (
+                        <select
+                          className="corrigir-status"
+                          value={l.status}
+                          onChange={(e) =>
+                            iniciarDecisao(l.id, e.target.value as 'aprovado' | 'recusado' | 'pendente')
+                          }
+                          title="Corrigir decisão (só o RH pode fazer isso)"
+                        >
+                          <option value="aprovado">Aprovado</option>
+                          <option value="recusado">Recusado</option>
+                          <option value="pendente">Voltar para pendente</option>
+                        </select>
+                      )}
+                    </div>
+                  )}
                 </td>
               </tr>
             ))}

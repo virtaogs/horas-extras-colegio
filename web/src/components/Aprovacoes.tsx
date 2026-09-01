@@ -11,6 +11,12 @@ function diasParado(enviadoEm: string): number {
   return Math.floor((agora - inicio) / 86400000)
 }
 
+interface AcaoAberta {
+  ids: string[]
+  tipo: 'aprovado' | 'recusado'
+  emLote: boolean
+}
+
 export default function Aprovacoes() {
   const { perfil } = useAuth()
   const isRh = perfil?.perfil === 'rh'
@@ -20,6 +26,8 @@ export default function Aprovacoes() {
   const [erro, setErro] = useState<string | null>(null)
   const [processando, setProcessando] = useState(false)
   const [selecionados, setSelecionados] = useState<Set<string>>(new Set())
+  const [acaoAberta, setAcaoAberta] = useState<AcaoAberta | null>(null)
+  const [motivoTexto, setMotivoTexto] = useState('')
 
   async function carregar() {
     setCarregando(true)
@@ -53,32 +61,43 @@ export default function Aprovacoes() {
       setErro(error.message)
       return
     }
+    setAcaoAberta(null)
+    setMotivoTexto('')
     carregar()
   }
 
-  function aprovarUm(id: string) {
-    let motivo: string | null = null
-    if (isRh) {
-      motivo = window.prompt('Motivo da aprovação pelo RH (obrigatório):')
-      if (!motivo || motivo.trim().length === 0) return
+  function precisaMotivo(tipo: 'aprovado' | 'recusado') {
+    return tipo === 'recusado' || isRh
+  }
+
+  function clicarAprovar(id: string) {
+    if (precisaMotivo('aprovado')) {
+      setMotivoTexto('')
+      setAcaoAberta({ ids: [id], tipo: 'aprovado', emLote: false })
+    } else {
+      decidir([id], 'aprovado', null)
     }
-    decidir([id], 'aprovado', motivo)
   }
 
-  function recusarUm(id: string) {
-    const motivo = window.prompt('Justificativa da recusa (obrigatória):')
-    if (!motivo || motivo.trim().length === 0) return
-    decidir([id], 'recusado', motivo)
+  function clicarRecusar(id: string) {
+    setMotivoTexto('')
+    setAcaoAberta({ ids: [id], tipo: 'recusado', emLote: false })
   }
 
-  function aprovarLote() {
+  function clicarAprovarLote() {
     if (selecionados.size === 0) return
-    let motivo: string | null = null
-    if (isRh) {
-      motivo = window.prompt(`Motivo da aprovação em lote de ${selecionados.size} lançamento(s) pelo RH (obrigatório):`)
-      if (!motivo || motivo.trim().length === 0) return
+    if (precisaMotivo('aprovado')) {
+      setMotivoTexto('')
+      setAcaoAberta({ ids: Array.from(selecionados), tipo: 'aprovado', emLote: true })
+    } else {
+      decidir(Array.from(selecionados), 'aprovado', null)
     }
-    decidir(Array.from(selecionados), 'aprovado', motivo)
+  }
+
+  function confirmarAcaoAberta() {
+    if (!acaoAberta) return
+    if (motivoTexto.trim().length === 0) return
+    decidir(acaoAberta.ids, acaoAberta.tipo, motivoTexto.trim())
   }
 
   function alternarSelecao(id: string) {
@@ -99,7 +118,7 @@ export default function Aprovacoes() {
           Aprovações <span className="contador-pendentes">{contador}</span>
         </h2>
         {selecionados.size > 0 && (
-          <button className="btn-aprovar" onClick={aprovarLote} disabled={processando}>
+          <button className="btn-aprovar" onClick={clicarAprovarLote} disabled={processando}>
             Aprovar {selecionados.size} selecionado(s)
           </button>
         )}
@@ -112,6 +131,26 @@ export default function Aprovacoes() {
 
       {erro && <p className="erro">{erro}</p>}
 
+      {acaoAberta?.emLote && (
+        <div className="form-motivo">
+          <label>
+            Motivo da aprovação em lote de {acaoAberta.ids.length} lançamento(s) (obrigatório)
+            <textarea
+              value={motivoTexto}
+              onChange={(e) => setMotivoTexto(e.target.value)}
+              rows={2}
+              autoFocus
+            />
+          </label>
+          <div className="acoes">
+            <button className="btn-aprovar" disabled={processando || motivoTexto.trim().length === 0} onClick={confirmarAcaoAberta}>
+              Confirmar
+            </button>
+            <button onClick={() => setAcaoAberta(null)}>Cancelar</button>
+          </div>
+        </div>
+      )}
+
       {carregando ? (
         <p>Carregando…</p>
       ) : ordenados.length === 0 ? (
@@ -122,6 +161,7 @@ export default function Aprovacoes() {
             const parado = diasParado(l.enviado_em)
             const atrasado = parado > 3
             const aceite = l.aceites?.[0]
+            const formAberto = acaoAberta && !acaoAberta.emLote && acaoAberta.ids[0] === l.id
             return (
               <div key={l.id} className={`item-aprovacao ${atrasado ? 'item-atrasado' : ''}`}>
                 <input
@@ -147,15 +187,43 @@ export default function Aprovacoes() {
                       ? `Aceite registrado em ${new Date(aceite.aceito_em).toLocaleString('pt-BR')} (${aceite.versao_texto}): "${aceite.texto_aceito}"`
                       : 'Sem aceite registrado (inclusão manual do RH).'}
                   </div>
+
+                  {formAberto && (
+                    <div className="form-motivo">
+                      <label>
+                        {acaoAberta!.tipo === 'recusado'
+                          ? 'Justificativa da recusa (obrigatória)'
+                          : 'Motivo da aprovação pelo RH (obrigatório)'}
+                        <textarea
+                          value={motivoTexto}
+                          onChange={(e) => setMotivoTexto(e.target.value)}
+                          rows={2}
+                          autoFocus
+                        />
+                      </label>
+                      <div className="acoes">
+                        <button
+                          className={acaoAberta!.tipo === 'recusado' ? 'btn-recusar' : 'btn-aprovar'}
+                          disabled={processando || motivoTexto.trim().length === 0}
+                          onClick={confirmarAcaoAberta}
+                        >
+                          Confirmar
+                        </button>
+                        <button onClick={() => setAcaoAberta(null)}>Cancelar</button>
+                      </div>
+                    </div>
+                  )}
                 </div>
-                <div className="acoes">
-                  <button className="btn-aprovar" disabled={processando} onClick={() => aprovarUm(l.id)}>
-                    Aprovar
-                  </button>
-                  <button className="btn-recusar" disabled={processando} onClick={() => recusarUm(l.id)}>
-                    Recusar
-                  </button>
-                </div>
+                {!formAberto && (
+                  <div className="acoes">
+                    <button className="btn-aprovar" disabled={processando} onClick={() => clicarAprovar(l.id)}>
+                      Aprovar
+                    </button>
+                    <button className="btn-recusar" disabled={processando} onClick={() => clicarRecusar(l.id)}>
+                      Recusar
+                    </button>
+                  </div>
+                )}
               </div>
             )
           })}

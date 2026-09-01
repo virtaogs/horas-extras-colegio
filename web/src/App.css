@@ -342,6 +342,37 @@
   color: var(--cor-texto-fraco);
 }
 
+.form-motivo {
+  margin-top: 0.6rem;
+  padding: 0.6rem;
+  background: var(--cor-fundo);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.form-motivo label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.85rem;
+  color: var(--cor-texto-fraco);
+}
+
+.form-motivo textarea {
+  font: inherit;
+  padding: 0.5rem;
+  border: 1px solid var(--cor-borda);
+  border-radius: 6px;
+  resize: vertical;
+  min-width: 220px;
+}
+
+.form-motivo-linha {
+  min-width: 240px;
+}
+
 .contador-pendentes {
   display: inline-flex;
   align-items: center;
