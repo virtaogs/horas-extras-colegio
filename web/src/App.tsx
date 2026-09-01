@@ -26,9 +26,10 @@ function Conteudo() {
     )
   }
 
-  if (privacidade === 'carregando') return <div className="tela-cheia">Carregando…</div>
-
-  if (privacidade === 'pendente') return <AvisoPrivacidade onAceitar={marcarAceito} />
+  if (perfil.perfil !== 'rh') {
+    if (privacidade === 'carregando') return <div className="tela-cheia">Carregando…</div>
+    if (privacidade === 'pendente') return <AvisoPrivacidade onAceitar={marcarAceito} />
+  }
 
   return (
     <Layout>
