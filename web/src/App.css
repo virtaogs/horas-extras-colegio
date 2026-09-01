@@ -467,6 +467,25 @@
   flex-shrink: 0;
 }
 
+@media (max-width: 560px) {
+  .item-aprovacao {
+    flex-wrap: wrap;
+  }
+
+  .item-aprovacao-corpo {
+    flex-basis: 100%;
+  }
+
+  .item-aprovacao .acoes {
+    flex-basis: 100%;
+    justify-content: stretch;
+  }
+
+  .item-aprovacao .acoes button {
+    flex: 1;
+  }
+}
+
 .expurgo {
   margin-top: 1.5rem;
   padding-top: 1.2rem;
