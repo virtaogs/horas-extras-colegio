@@ -1,9 +1,10 @@
 import { useState, type FormEvent } from 'react'
 import { useAuth } from '../auth/AuthContext'
+import { apenasDigitos, cpfParaEmailLogin } from '../lib/cpf'
 
 export default function Login() {
   const { signIn } = useAuth()
-  const [email, setEmail] = useState('')
+  const [cpf, setCpf] = useState('')
   const [senha, setSenha] = useState('')
   const [erro, setErro] = useState<string | null>(null)
   const [enviando, setEnviando] = useState(false)
@@ -11,10 +12,17 @@ export default function Login() {
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
     setErro(null)
+
+    const digitos = apenasDigitos(cpf)
+    if (digitos.length !== 11) {
+      setErro('Digite o CPF completo, com 11 números.')
+      return
+    }
+
     setEnviando(true)
-    const msg = await signIn(email, senha)
+    const msg = await signIn(cpfParaEmailLogin(digitos), senha)
     setEnviando(false)
-    if (msg) setErro(msg)
+    if (msg) setErro('CPF ou senha incorretos.')
   }
 
   return (
@@ -24,11 +32,13 @@ export default function Login() {
         <p className="subtitulo">Colégio — controle e aprovação</p>
 
         <label>
-          E-mail
+          CPF
           <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            type="text"
+            inputMode="numeric"
+            placeholder="000.000.000-00"
+            value={cpf}
+            onChange={(e) => setCpf(e.target.value)}
             required
             autoFocus
           />
@@ -49,6 +59,8 @@ export default function Login() {
         <button type="submit" disabled={enviando}>
           {enviando ? 'Entrando…' : 'Entrar'}
         </button>
+
+        <p className="nota-login">Esqueceu a senha? Procure o RH para redefinir.</p>
       </form>
     </div>
   )

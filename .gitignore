@@ -4,3 +4,4 @@ web/node_modules/
 web/dist/
 web/.env.local
 web/*.local
+sql/*_PRIVADO_*.sql

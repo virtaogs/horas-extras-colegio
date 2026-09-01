@@ -1,6 +1,7 @@
 import './App.css'
 import { AuthProvider, useAuth } from './auth/AuthContext'
 import Layout from './components/Layout'
+import AvisoPrivacidade, { usePrivacidadeAceita } from './components/AvisoPrivacidade'
 import Login from './pages/Login'
 import ColaboradorPage from './pages/ColaboradorPage'
 import CoordenadorPage from './pages/CoordenadorPage'
@@ -8,6 +9,7 @@ import RHPage from './pages/RHPage'
 
 function Conteudo() {
   const { session, perfil, loading } = useAuth()
+  const { status: privacidade, marcarAceito } = usePrivacidadeAceita(session?.user.id)
 
   if (loading) return <div className="tela-cheia">Carregando…</div>
 
@@ -23,6 +25,10 @@ function Conteudo() {
       </div>
     )
   }
+
+  if (privacidade === 'carregando') return <div className="tela-cheia">Carregando…</div>
+
+  if (privacidade === 'pendente') return <AvisoPrivacidade onAceitar={marcarAceito} />
 
   return (
     <Layout>
