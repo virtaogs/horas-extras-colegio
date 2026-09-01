@@ -33,6 +33,8 @@ export interface Lancamento {
   destino: Destino
   origem: Origem
   justificativa_manual: string | null
+  motivo_decisao: string | null
+  decidido_por_perfil: 'coordenador' | 'rh' | null
   enviado_em: string
   aprovado_por: string | null
   decidido_em: string | null
@@ -41,6 +43,11 @@ export interface Lancamento {
     matricula: string
     setor: string | null
   }
+  aceites?: {
+    texto_aceito: string
+    versao_texto: string
+    aceito_em: string
+  }[]
 }
 
 export interface Colaborador {

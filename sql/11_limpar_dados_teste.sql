@@ -59,9 +59,13 @@ where id in (
 delete from public.coordenadores
 where id = 'd0000000-0000-0000-0000-000000000001';
 
--- 4. RH fictício ("Ana Paula Ribeiro"), se ainda existir com esse UUID
+-- 4. RH fictício ("Ana Paula Ribeiro") e qualquer outro RH criado em
+-- cima de um login de teste (ex: durante os testes de RLS, o Eduardo de
+-- teste foi promovido a RH — sem isso o passo 6 falha por FK).
 delete from public.rh_usuarios
-where user_id = 'a0000000-0000-0000-0000-000000000001';
+where user_id in (
+  select id from auth.users where email like '%@colegio.test'
+);
 
 -- 5. Logins de teste (auth.identities depende de auth.users)
 delete from auth.identities

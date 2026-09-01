@@ -342,6 +342,100 @@
   color: var(--cor-texto-fraco);
 }
 
+.contador-pendentes {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.6rem;
+  height: 1.6rem;
+  padding: 0 0.4rem;
+  margin-left: 0.5rem;
+  border-radius: 999px;
+  background: var(--cor-primaria);
+  color: white;
+  font-size: 0.85rem;
+  font-weight: 700;
+  vertical-align: middle;
+}
+
+.badge-rh {
+  margin-left: 0.4rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0.05rem 0.35rem;
+  border-radius: 4px;
+  background: #ede9fe;
+  color: #6d28d9;
+}
+
+.fila-aprovacoes {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+
+.item-aprovacao {
+  display: flex;
+  gap: 0.8rem;
+  align-items: flex-start;
+  border: 1px solid var(--cor-borda);
+  border-radius: 8px;
+  padding: 0.8rem;
+}
+
+.item-aprovacao input[type='checkbox'] {
+  margin-top: 0.3rem;
+}
+
+.item-atrasado {
+  border-color: var(--cor-aviso);
+  background: #fffbeb;
+}
+
+.item-aprovacao-corpo {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.item-aprovacao-topo {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.badge-dias {
+  font-size: 0.75rem;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  background: var(--cor-fundo);
+  color: var(--cor-texto-fraco);
+}
+
+.badge-dias-atrasado {
+  background: var(--cor-aviso);
+  color: white;
+  font-weight: 600;
+}
+
+.item-aprovacao-detalhes {
+  font-size: 0.88rem;
+  color: var(--cor-texto-fraco);
+}
+
+.item-aprovacao-aceite {
+  font-size: 0.78rem;
+  color: var(--cor-texto-fraco);
+  font-style: italic;
+}
+
+.item-aprovacao .acoes {
+  flex-shrink: 0;
+}
+
 .expurgo {
   margin-top: 1.5rem;
   padding-top: 1.2rem;

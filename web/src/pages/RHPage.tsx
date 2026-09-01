@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import { baixarCsv, abrirPdf, formatarDataBR } from '../lib/csv'
 import { formatarDuracao, intervaloParaHoras } from '../lib/prazo'
+import Aprovacoes from '../components/Aprovacoes'
 import {
   MOTIVOS,
   type Coordenador,
@@ -10,10 +11,11 @@ import {
   type IndicadorExcesso,
 } from '../lib/types'
 
-const ABAS = ['lancamentos', 'colaboradores', 'coordenadores', 'indicador', 'feriados'] as const
+const ABAS = ['aprovacoes', 'lancamentos', 'colaboradores', 'coordenadores', 'indicador', 'feriados'] as const
 type Aba = (typeof ABAS)[number]
 
 const LABEL_ABA: Record<Aba, string> = {
+  aprovacoes: 'Aprovações',
   lancamentos: 'Lançamentos',
   colaboradores: 'Colaboradores',
   coordenadores: 'Coordenadores',
@@ -22,7 +24,7 @@ const LABEL_ABA: Record<Aba, string> = {
 }
 
 export default function RHPage() {
-  const [aba, setAba] = useState<Aba>('lancamentos')
+  const [aba, setAba] = useState<Aba>('aprovacoes')
 
   return (
     <div className="pagina">
@@ -34,6 +36,7 @@ export default function RHPage() {
         ))}
       </nav>
 
+      {aba === 'aprovacoes' && <Aprovacoes />}
       {aba === 'lancamentos' && <AbaLancamentos />}
       {aba === 'colaboradores' && <AbaColaboradores />}
       {aba === 'coordenadores' && <AbaCoordenadores />}
@@ -141,7 +144,17 @@ function AbaLancamentos() {
   }, [visiveis])
 
   async function decidir(id: string, novoStatus: 'aprovado' | 'recusado' | 'pendente') {
-    const { error } = await supabase.from('lancamentos').update({ status: novoStatus }).eq('id', id)
+    let motivo: string | null = null
+    if (novoStatus === 'aprovado' || novoStatus === 'recusado') {
+      motivo = window.prompt(
+        `Motivo para marcar como ${novoStatus === 'aprovado' ? 'aprovado' : 'recusado'} (obrigatório, você é RH):`,
+      )
+      if (!motivo || motivo.trim().length === 0) return
+    }
+    const { error } = await supabase
+      .from('lancamentos')
+      .update({ status: novoStatus, motivo_decisao: motivo })
+      .eq('id', id)
     if (error) setErro(error.message)
     carregar()
   }
@@ -331,8 +344,13 @@ function AbaLancamentos() {
                 <td title={l.justificativa_manual ?? undefined}>
                   {l.origem === 'colaborador' ? 'Colaborador' : 'RH (manual)'}
                 </td>
-                <td>
+                <td title={l.motivo_decisao ?? undefined}>
                   <span className={`status status-${l.status}`}>{LABEL_STATUS[l.status]}</span>
+                  {l.decidido_por_perfil === 'rh' && l.status !== 'pendente' && (
+                    <span className="badge-rh" title="Decidido pelo RH">
+                      RH
+                    </span>
+                  )}
                 </td>
                 <td>
                   <div className="acoes">

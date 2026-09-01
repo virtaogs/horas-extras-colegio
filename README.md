@@ -40,7 +40,8 @@ Cada um é uma **nova query** no SQL Editor, colar tudo e **Run**.
 | 3 | [sql/05_privacidade.sql](sql/05_privacidade.sql) | Tabela de aceite do aviso de privacidade (LGPD). |
 | 4 | [sql/07_prazo_lancamento.sql](sql/07_prazo_lancamento.sql) | Regras de prazo de lançamento (2 dias corridos, mês corrente, exceção do último dia), aplicadas no servidor. |
 | 5 | [sql/10_painel_rh.sql](sql/10_painel_rh.sql) | Indicador de excesso (>2h/dia ou >20h/mês) e justificativa obrigatória em inclusão manual. |
-| 6 | [sql/13_expurgo_anonimizacao.sql](sql/13_expurgo_anonimizacao.sql) | Função de expurgo/anonimização de ex-colaboradores. |
+| 6 | [sql/15_etapa4_aprovacoes.sql](sql/15_etapa4_aprovacoes.sql) | Justificativa obrigatória pra recusar e pro RH decidir, e quem decidiu (coordenador/RH) fica gravado na linha. |
+| 7 | [sql/13_expurgo_anonimizacao.sql](sql/13_expurgo_anonimizacao.sql) | Função de expurgo/anonimização de ex-colaboradores. |
 
 `sql/02_seed_dados_teste.sql` é **opcional** — só se você quiser dados
 fictícios pra testar antes de cadastrar gente de verdade (veja a seção de
