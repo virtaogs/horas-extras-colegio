@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { supabase } from '../lib/supabaseClient'
-import { baixarCsv } from '../lib/csv'
+import { baixarCsv, formatarDataBR } from '../lib/csv'
 import {
   MOTIVOS,
   type Coordenador,
@@ -717,7 +717,7 @@ function AbaFeriados() {
           <tbody>
             {lista.map((f) => (
               <tr key={f.id}>
-                <td>{f.data}</td>
+                <td>{formatarDataBR(f.data)}</td>
                 <td>{f.descricao}</td>
                 <td>
                   <button onClick={() => remover(f.id)}>Remover</button>

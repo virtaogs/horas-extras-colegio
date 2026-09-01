@@ -1,3 +1,9 @@
+export function formatarDataBR(isoDate: string): string {
+  const [ano, mes, dia] = isoDate.split('-')
+  if (!ano || !mes || !dia) return isoDate
+  return `${dia}/${mes}/${ano}`
+}
+
 export function baixarCsv(nomeArquivo: string, linhas: Record<string, string | number | null>[]) {
   if (linhas.length === 0) return
   const colunas = Object.keys(linhas[0])
