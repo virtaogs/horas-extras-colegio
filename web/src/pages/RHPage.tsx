@@ -79,7 +79,7 @@ function AbaLancamentos() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filtro])
 
-  async function decidir(id: string, novoStatus: 'aprovado' | 'recusado') {
+  async function decidir(id: string, novoStatus: 'aprovado' | 'recusado' | 'pendente') {
     const { error } = await supabase.from('lancamentos').update({ status: novoStatus }).eq('id', id)
     if (error) setErro(error.message)
     carregar()
@@ -163,16 +163,30 @@ function AbaLancamentos() {
                   <span className={`status status-${l.status}`}>{LABEL_STATUS[l.status]}</span>
                 </td>
                 <td>
-                  {l.status === 'pendente' && (
-                    <div className="acoes">
-                      <button className="btn-aprovar" onClick={() => decidir(l.id, 'aprovado')}>
-                        Aprovar
-                      </button>
-                      <button className="btn-recusar" onClick={() => decidir(l.id, 'recusado')}>
-                        Recusar
-                      </button>
-                    </div>
-                  )}
+                  <div className="acoes">
+                    {l.status === 'pendente' && (
+                      <>
+                        <button className="btn-aprovar" onClick={() => decidir(l.id, 'aprovado')}>
+                          Aprovar
+                        </button>
+                        <button className="btn-recusar" onClick={() => decidir(l.id, 'recusado')}>
+                          Recusar
+                        </button>
+                      </>
+                    )}
+                    {l.status !== 'pendente' && (
+                      <select
+                        className="corrigir-status"
+                        value={l.status}
+                        onChange={(e) => decidir(l.id, e.target.value as 'aprovado' | 'recusado' | 'pendente')}
+                        title="Corrigir decisão (só o RH pode fazer isso)"
+                      >
+                        <option value="aprovado">Aprovado</option>
+                        <option value="recusado">Recusado</option>
+                        <option value="pendente">Voltar para pendente</option>
+                      </select>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}
