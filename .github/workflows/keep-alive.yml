@@ -1,22 +1,44 @@
 name: Supabase keep-alive
 
-# Projetos gratuitos do Supabase pausam depois de ~7 dias sem atividade.
-# Essa rotina só faz uma consulta simples de vez em quando pra evitar isso.
+# Projetos gratuitos do Supabase pausam depois de ~7 dias sem atividade
+# no banco. Essa rotina loga com uma conta dedicada (sem nenhum perfil
+# de app vinculado, só existe pra isso) e faz uma consulta de verdade
+# no Postgres pra contar como atividade.
+#
+# Importante: o papel "anon" não tem NENHUM grant nas tabelas (RLS bem
+# fechado de propósito) — pingar sem login dá 401 e não conta como
+# atividade. Por isso o login é obrigatório aqui.
 on:
   schedule:
-    - cron: '0 8 */5 * *' # a cada 5 dias, 08h UTC
+    - cron: '0 8 */3 * *' # a cada 3 dias, 08h UTC
   workflow_dispatch:
 
 jobs:
   ping:
     runs-on: ubuntu-latest
     steps:
-      - name: Consulta simples no Supabase
+      - name: Login e consulta no Supabase
         run: |
+          set -e
+
+          token_response=$(curl -sf "${SUPABASE_URL}/auth/v1/token?grant_type=password" \
+            -H "apikey: ${SUPABASE_ANON_KEY}" \
+            -H "Content-Type: application/json" \
+            -d "{\"email\":\"${SUPABASE_PING_EMAIL}\",\"password\":\"${SUPABASE_PING_PASSWORD}\"}")
+
+          access_token=$(echo "$token_response" | jq -r '.access_token')
+
+          if [ -z "$access_token" ] || [ "$access_token" = "null" ]; then
+            echo "::error::Não recebeu access_token no login. Resposta: $token_response"
+            exit 1
+          fi
+
           curl -sf "${SUPABASE_URL}/rest/v1/feriados?select=id&limit=1" \
             -H "apikey: ${SUPABASE_ANON_KEY}" \
-            -H "Authorization: Bearer ${SUPABASE_ANON_KEY}" \
+            -H "Authorization: Bearer ${access_token}" \
             -o /dev/null -w "status: %{http_code}\n"
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_PING_EMAIL: ${{ secrets.SUPABASE_PING_EMAIL }}
+          SUPABASE_PING_PASSWORD: ${{ secrets.SUPABASE_PING_PASSWORD }}
