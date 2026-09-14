@@ -7,25 +7,42 @@ interface AuthState {
   session: Session | null
   perfil: MeuPerfil | null
   loading: boolean
+  erroPerfil: boolean
   signIn: (email: string, senha: string) => Promise<string | null>
   signOut: () => Promise<void>
+  recarregarPerfil: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthState | undefined>(undefined)
+
+function esperar(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
   const [perfil, setPerfil] = useState<MeuPerfil | null>(null)
   const [loading, setLoading] = useState(true)
+  const [erroPerfil, setErroPerfil] = useState(false)
 
+  // Depois que o projeto Supabase sai de pausa (plano gratuito), a
+  // primeira consulta pode falhar por lentidão de "esquentar" — por
+  // isso tenta de novo algumas vezes antes de assumir que a pessoa
+  // realmente não tem perfil vinculado.
   async function carregarPerfil() {
-    const { data, error } = await supabase.rpc('meu_perfil').maybeSingle()
-    if (error) {
-      console.error('Erro ao carregar perfil:', error)
-      setPerfil(null)
-      return
+    setErroPerfil(false)
+    const tentativas = [0, 1200, 2500]
+    for (let i = 0; i < tentativas.length; i++) {
+      if (tentativas[i] > 0) await esperar(tentativas[i])
+      const { data, error } = await supabase.rpc('meu_perfil').maybeSingle()
+      if (!error) {
+        setPerfil((data as MeuPerfil) ?? null)
+        return
+      }
+      console.error(`Erro ao carregar perfil (tentativa ${i + 1}):`, error)
     }
-    setPerfil((data as MeuPerfil) ?? null)
+    setPerfil(null)
+    setErroPerfil(true)
   }
 
   useEffect(() => {
@@ -41,6 +58,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         await carregarPerfil()
       } else {
         setPerfil(null)
+        setErroPerfil(false)
       }
     })
 
@@ -58,7 +76,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ session, perfil, loading, signIn, signOut }}>
+    <AuthContext.Provider
+      value={{ session, perfil, loading, erroPerfil, signIn, signOut, recarregarPerfil: carregarPerfil }}
+    >
       {children}
     </AuthContext.Provider>
   )

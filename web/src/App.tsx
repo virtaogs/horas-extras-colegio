@@ -8,12 +8,25 @@ import CoordenadorPage from './pages/CoordenadorPage'
 import RHPage from './pages/RHPage'
 
 function Conteudo() {
-  const { session, perfil, loading } = useAuth()
+  const { session, perfil, loading, erroPerfil, recarregarPerfil } = useAuth()
   const { status: privacidade, marcarAceito } = usePrivacidadeAceita(session?.user.id)
 
   if (loading) return <div className="tela-cheia">Carregando…</div>
 
   if (!session) return <Login />
+
+  if (!perfil && erroPerfil) {
+    return (
+      <div className="tela-cheia">
+        <div style={{ maxWidth: 360 }}>
+          <p>
+            Não deu pra confirmar seu acesso agora — pode ter sido só uma instabilidade de conexão.
+          </p>
+          <button onClick={() => recarregarPerfil()}>Tentar de novo</button>
+        </div>
+      </div>
+    )
+  }
 
   if (!perfil) {
     return (
