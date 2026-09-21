@@ -8,15 +8,26 @@ name: Supabase keep-alive
 # Importante: o papel "anon" não tem NENHUM grant nas tabelas (RLS bem
 # fechado de propósito) — pingar sem login dá 401 e não conta como
 # atividade. Por isso o login é obrigatório aqui.
+#
+# Segundo importante: o GitHub desativa sozinho agendamentos (schedule)
+# de repositórios com 60+ dias sem NENHUM commit — mesmo que essa Action
+# estivesse rodando certinho. Por isso, a cada execução bem-sucedida,
+# ela também registra um commit (timestamp em .github/last-ping.txt),
+# o que mantém o próprio agendamento vivo indefinidamente.
 on:
   schedule:
     - cron: '0 8 */3 * *' # a cada 3 dias, 08h UTC
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   ping:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+
       - name: Login e consulta no Supabase
         run: |
           set -e
@@ -42,3 +53,13 @@ jobs:
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           SUPABASE_PING_EMAIL: ${{ secrets.SUPABASE_PING_EMAIL }}
           SUPABASE_PING_PASSWORD: ${{ secrets.SUPABASE_PING_PASSWORD }}
+
+      - name: Registra o ping (mantém o agendamento do GitHub vivo)
+        run: |
+          mkdir -p .github
+          date -u "+%Y-%m-%dT%H:%M:%SZ" > .github/last-ping.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/last-ping.txt
+          git diff --staged --quiet || git commit -m "chore: keep-alive ping [skip ci]"
+          git push
