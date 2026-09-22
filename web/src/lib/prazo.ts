@@ -40,15 +40,37 @@ function inicioDoMes(d: Date): Date {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1))
 }
 
-function ehFimDeSemana(d: Date): boolean {
-  const dia = d.getUTCDay() // 0 = domingo, 6 = sábado
-  return dia === 0 || dia === 6
+// Dia útil = não é domingo e não é feriado cadastrado. Sábado conta
+// como dia útil de propósito (o colégio funciona aos sábados) — mesma
+// regra do banco (public.eh_dia_util).
+function ehDiaUtil(d: Date, feriadosISO: Set<string>): boolean {
+  return d.getUTCDay() !== 0 && !feriadosISO.has(toISO(d))
 }
 
 function primeiroDiaUtil(inicio: Date, feriadosISO: Set<string>): Date {
   let d = inicio
-  while (ehFimDeSemana(d) || feriadosISO.has(toISO(d))) {
+  while (!ehDiaUtil(d, feriadosISO)) {
     d = addDias(d, 1)
+  }
+  return d
+}
+
+function somarDiasUteis(data: Date, quantidade: number, feriadosISO: Set<string>): Date {
+  let d = data
+  let restante = quantidade
+  while (restante > 0) {
+    d = addDias(d, 1)
+    if (ehDiaUtil(d, feriadosISO)) restante -= 1
+  }
+  return d
+}
+
+function subtrairDiasUteis(data: Date, quantidade: number, feriadosISO: Set<string>): Date {
+  let d = data
+  let restante = quantidade
+  while (restante > 0) {
+    d = addDias(d, -1)
+    if (ehDiaUtil(d, feriadosISO)) restante -= 1
   }
   return d
 }
@@ -76,13 +98,13 @@ export function calcularPrazo(feriadosISO: string[]): PrazoLancamento {
     exceptionAtiva = h < 8 || (h === 8 && m === 0)
   }
 
-  const hojeMenos2 = addDias(hoje, -2)
-  const inicioJanela = hojeMenos2.getTime() > inicioMes.getTime() ? hojeMenos2 : inicioMes
+  const hojeMenos2Uteis = subtrairDiasUteis(hoje, 2, feriadosSet)
+  const inicioJanela = hojeMenos2Uteis.getTime() > inicioMes.getTime() ? hojeMenos2Uteis : inicioMes
   const min = exceptionAtiva ? toISO(ultimoDiaMesAnterior) : toISO(inicioJanela)
 
   const textoPrazo = exceptionAtiva
-    ? `Você ainda pode lançar hora extra do dia ${formatarDiaMes(ultimoDiaMesAnterior)} (último dia do mês passado) até as 08h de ${formatarDiaMes(diaUtil)}. Depois disso, só dentro do mês corrente, em até 2 dias corridos após a data.`
-    : `Lance a hora extra em até 2 dias corridos após a data, sempre dentro do mês corrente. Fora desse prazo, procure o RH.`
+    ? `Você ainda pode lançar hora extra do dia ${formatarDiaMes(ultimoDiaMesAnterior)} (último dia do mês passado) até as 08h de ${formatarDiaMes(diaUtil)}. Depois disso, só dentro do mês corrente, em até 2 dias úteis após a data (sábado conta como dia útil).`
+    : `Lance a hora extra em até 2 dias úteis após a data (sábado conta como dia útil, só domingo e feriado não contam), sempre dentro do mês corrente. Fora desse prazo, procure o RH.`
 
   return { min, max: toISO(hoje), exceptionAtiva, ultimoDiaMesAnterior: toISO(ultimoDiaMesAnterior), textoPrazo }
 }
@@ -104,8 +126,7 @@ export function podeLancarData(dataISO: string, feriadosISO: string[]): boolean 
 
   const inicioMes = inicioDoMes(hoje)
   if (data.getTime() >= inicioMes.getTime()) {
-    const diff = Math.round((hoje.getTime() - data.getTime()) / 86400000)
-    return diff <= 2
+    return hoje.getTime() <= somarDiasUteis(data, 2, feriadosSet).getTime()
   }
 
   const ultimoDiaMesAnterior = addDias(inicioMes, -1)

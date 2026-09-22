@@ -38,10 +38,11 @@ Cada um é uma **nova query** no SQL Editor, colar tudo e **Run**.
 | 1 | [sql/01_schema_rls.sql](sql/01_schema_rls.sql) | Tabelas, índices, constraints, triggers e todas as policies de RLS. |
 | 2 | [sql/03_funcao_meu_perfil.sql](sql/03_funcao_meu_perfil.sql) | Função que o app usa pra saber se quem logou é colaborador, coordenador ou RH. |
 | 3 | [sql/05_privacidade.sql](sql/05_privacidade.sql) | Tabela de aceite do aviso de privacidade (LGPD). |
-| 4 | [sql/07_prazo_lancamento.sql](sql/07_prazo_lancamento.sql) | Regras de prazo de lançamento (2 dias corridos, mês corrente, exceção do último dia), aplicadas no servidor. |
+| 4 | [sql/07_prazo_lancamento.sql](sql/07_prazo_lancamento.sql) | Regras de prazo de lançamento (mês corrente, exceção do último dia), aplicadas no servidor. |
 | 5 | [sql/10_painel_rh.sql](sql/10_painel_rh.sql) | Indicador de excesso (>2h/dia ou >20h/mês) e justificativa obrigatória em inclusão manual. |
 | 6 | [sql/15_etapa4_aprovacoes.sql](sql/15_etapa4_aprovacoes.sql) | Justificativa obrigatória pra recusar e pro RH decidir, e quem decidiu (coordenador/RH) fica gravado na linha. |
 | 7 | [sql/13_expurgo_anonimizacao.sql](sql/13_expurgo_anonimizacao.sql) | Função de expurgo/anonimização de ex-colaboradores. |
+| 8 | [sql/32_prazo_dias_uteis.sql](sql/32_prazo_dias_uteis.sql) | Muda o prazo de 2 dias corridos para 2 dias **úteis** (segunda a sábado — sábado conta como dia útil). |
 
 `sql/02_seed_dados_teste.sql` é **opcional** — só se você quiser dados
 fictícios pra testar antes de cadastrar gente de verdade (veja a seção de
@@ -146,9 +147,9 @@ confirmar.
 - **Colaborador**: só lê/insere o que é dele. Sem policy de
   `UPDATE`/`DELETE` em `lancamentos` — sem policy, o Postgres nega por
   padrão. Um trigger força `status = 'pendente'` no insert e valida o
-  prazo (2 dias corridos, mês corrente, exceção do último dia até 08h do
-  1º dia útil seguinte), rejeitando no servidor mesmo que alguém
-  contorne a tela.
+  prazo (2 dias úteis — segunda a sábado, sábado conta como dia útil —,
+  mês corrente, exceção do último dia até 08h do 1º dia útil seguinte),
+  rejeitando no servidor mesmo que alguém contorne a tela.
 - **Coordenador**: só vê/decide lançamentos da própria equipe, e só
   enquanto `pendente`. Um trigger bloqueia qualquer alteração além do
   status.

@@ -8,10 +8,12 @@
 -- REGRAS
 -- - Nunca data futura.
 -- - Só é possível lançar dentro do mês corrente.
--- - Prazo de 2 dias corridos após a data da hora extra.
+-- - Prazo de 2 dias ÚTEIS após a data da hora extra (segunda a sábado;
+--   regra atualizada em sql/32_prazo_dias_uteis.sql — sábado conta como
+--   dia útil, só domingo e feriado não contam).
 -- - Exceção: o último dia do mês anterior pode ser lançado até as 08h
---   do primeiro dia útil do mês corrente (considerando fins de semana
---   e feriados cadastrados). Depois disso, recusa.
+--   do primeiro dia útil do mês corrente (considerando domingos e
+--   feriados cadastrados). Depois disso, recusa.
 -- - Essas regras valem só para origem = 'colaborador'. Inclusão manual
 --   do RH (origem = 'rh_manual') não é afetada — é assim que o RH
 --   registra lançamentos fora do prazo (Etapa 5).
